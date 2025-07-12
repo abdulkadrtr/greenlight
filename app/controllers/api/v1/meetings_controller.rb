@@ -104,6 +104,7 @@ module Api
       end
 
       def authorized_as_viewer?(viewer_code:)
+        return true if current_user&.shared_rooms&.include?(@room)
         return true if viewer_code.blank? && params[:access_code].blank?
 
         access_code_validator(access_code: viewer_code)
@@ -119,7 +120,6 @@ module Api
       #    and the access code input correspond to either
       def authorized_as_moderator?(mod_code:, viewer_code:, anyone_join_as_mod:)
         @room.user_id == current_user&.id ||
-          current_user&.shared_rooms&.include?(@room) ||
           access_code_validator(access_code: mod_code) ||
           (anyone_join_as_mod && viewer_code.blank? && mod_code.blank?) ||
           (anyone_join_as_mod && (access_code_validator(access_code: mod_code) || access_code_validator(access_code: viewer_code)))
