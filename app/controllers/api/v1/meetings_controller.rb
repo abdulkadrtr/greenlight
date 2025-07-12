@@ -28,12 +28,38 @@ module Api
       # POST /api/v1/meetings/:friendly_id/start.json
       # Starts a BigBlueButton meetings and joins in the meeting starter
       def start
+        is_running = false
+        begin
+          BigBlueButtonApi.new(provider: @room.user.provider).get_meeting_info(meeting_id: @room.meeting_id)
+          is_running = true
+        rescue BigBlueButton::BigBlueButtonException
+          is_running = false
+        end
+        # 1. ADIM: ODA ZATEN ÇALIŞIYORSA
+        if is_running
+          # Oda zaten açıksa, rolünü belirle ve katılma linki ver.
+          role = (@room.user == current_user) ? 'Moderator' : 'Viewer'
+          return render_data data: BigBlueButtonApi.new(provider: current_provider).join_meeting(
+            room: @room,
+            name: current_user.name,
+            user_id: fetch_bbb_user_id,
+            avatar_url: current_user.avatar.attached? ? url_for(current_user.avatar) : nil,
+            role: role
+          ), status: :ok
+        end
+        # ODA KAPALIYSA, SADECE SAHİBİ AÇABİLİR
+        if @room.user != current_user
+          Rails.logger.info "--- ODA KAPALI VE KULLANICI SAHİBİ DEĞİL. BAŞLATMA ENGELLENDİ. ---"
+          return render_error status: :forbidden, errors: 'unauthorized'
+        end
+
+        # 3. ADIM: ODA KAPALI VE KULLANICI SAHİBİ. TOPLANTIYI BAŞLAT.
+        Rails.logger.info "--- ODA KAPALI VE KULLANICI SAHİBİ. TOPLANTI BAŞLATILIYOR. ---"
         begin
           MeetingStarter.new(room: @room, base_url: request.base_url, current_user:, provider: current_provider).call
         rescue BigBlueButton::BigBlueButtonException => e
           return render_error status: :bad_request, errors: e.key unless e.key == 'idNotUnique'
         end
-
         render_data data: BigBlueButtonApi.new(provider: current_provider).join_meeting(
           room: @room,
           name: current_user.name,
